@@ -335,6 +335,25 @@
   }
   .rate-btn .badge{ width:26px; height:26px; font-size:13px; }
 
+  .no-review-btn{
+    width:100%;
+    margin-top:10px;
+    padding:10px 12px;
+    border-radius:8px;
+    border:1px solid var(--border);
+    background:var(--panel-2);
+    color:var(--text-dim);
+    font-size:12px;
+    font-weight:700;
+    cursor:pointer;
+    transition:background .12s ease, border-color .12s ease, color .12s ease;
+  }
+  .no-review-btn:hover{
+    background:var(--panel);
+    border-color:var(--green);
+    color:var(--text);
+  }
+
   .promo-grid{
     display:flex; gap:10px; justify-content:center; margin-top:6px;
   }
@@ -513,6 +532,9 @@
     <h3 id="rateTitle">Rate that move</h3>
     <p class="hint" id="rateSub">How good was this move?</p>
     <div class="rate-grid" id="rateGrid"></div>
+    <button class="no-review-btn" id="noReviewBtn" type="button">
+      No Review
+    </button>
   </div>
 </div>
 
@@ -848,6 +870,7 @@
   const promoGrid = document.getElementById('promoGrid');
   const rateOverlay = document.getElementById('rateOverlay');
   const rateGrid = document.getElementById('rateGrid');
+  const noReviewBtn = document.getElementById('noReviewBtn');
   const rateSub = document.getElementById('rateSub');
   const overOverlay = document.getElementById('overOverlay');
   const overReason = document.getElementById('overReason');
@@ -874,6 +897,8 @@
   replayNext.addEventListener('click', ()=>{ stopAutoplay(); goToReplayIndex(game.replayIndex+1); });
   replayLast.addEventListener('click', ()=>{ stopAutoplay(); goToReplayIndex(game.history.length-1); });
   replayPlay.addEventListener('click', toggleAutoplay);
+
+  noReviewBtn.addEventListener('click', skipReview);
 
   replayToggleBtn.addEventListener('click', ()=>{
     if(!rateOverlay.classList.contains('hidden') || !promoOverlay.classList.contains('hidden')) return;
@@ -999,25 +1024,48 @@
   function submitRating(key){
     const entry = game.history[game.history.length-1];
     if(entry) entry.quality = key;
+
+    finishReview(entry, key);
+  }
+
+  function skipReview(){
+    const entry = game.history[game.history.length-1];
+    if(entry) entry.quality = null;
+
+    finishReview(entry, null);
+  }
+
+  function finishReview(entry, key){
     rateOverlay.classList.add('hidden');
 
-    if(entry){
+    // A skipped review has no badge, flash, or game-review notation.
+    if(entry && key){
       game.activeBadge = { r:entry.move.to.r, c:entry.move.to.c, quality:key };
+
       if(game.badgeTimer) clearTimeout(game.badgeTimer);
+
       game.badgeTimer = setTimeout(()=>{
         game.activeBadge = null;
         game.badgeTimer = null;
         if(game.mode==='play') renderBoard();
       }, 5000);
+    } else {
+      game.activeBadge = null;
+      if(game.badgeTimer){
+        clearTimeout(game.badgeTimer);
+        game.badgeTimer = null;
+      }
     }
 
     renderBoard();
     renderHistory();
     renderStats();
+
     if(game.gameOver){
       overReason.textContent = game.gameOverReason;
       overOverlay.classList.remove('hidden');
     }
+
     renderStatus();
   }
 
@@ -1153,7 +1201,7 @@
   function renderHistory(){
     historyList.innerHTML='';
     if(game.history.length===0){
-      historyList.innerHTML = '<div class="empty-history">Moves you make will appear here with their grade.</div>';
+      historyList.innerHTML = '<div class="empty-history">Moves you make will appear here. Reviewed moves show their grade.</div>';
       return;
     }
     for(let i=0;i<game.history.length;i+=2){
@@ -1486,7 +1534,7 @@
   }
 
   function openRatingModal(result){
-    rateSub.textContent = (result.color==='w'?'White':'Black') + ' just played ' + result.san + '. How good was it?';
+    rateSub.textContent = (result.color==='w'?'White':'Black') + ' just played ' + result.san + '. Choose a grade or skip the review.';
     rateOverlay.classList.remove('hidden');
   }
 
