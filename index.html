@@ -476,6 +476,7 @@
       <button class="mode-btn" data-variant="allroyal" title="Every piece except pawns must be defended like a king">All-Royal</button>
     </div>
     <button class="btn ghost" id="replayToggleBtn" disabled>Replay Game</button>
+    <button class="btn ghost" id="randomEndgameBtn">Random Endgame</button>
     <button class="btn" id="newGameBtn">New Game</button>
   </div>
 </header>
@@ -890,6 +891,7 @@
   const dragGhost = document.getElementById('dragGhost');
 
   document.getElementById('newGameBtn').addEventListener('click', resetGame);
+    document.getElementById('randomEndgameBtn').addEventListener('click', generateRandomEndgame);
   document.getElementById('overNewGameBtn').addEventListener('click', resetGame);
   document.getElementById('overReplayBtn').addEventListener('click', enterReplay);
   replayFirst.addEventListener('click', ()=>{ stopAutoplay(); goToReplayIndex(-1); });
@@ -942,6 +944,124 @@
     subText.textContent = 'Local 2-player \u00b7 grade every move \u00b7 ' + variantLabel;
     replayToggleBtn.disabled = game.history.length===0;
     replayToggleBtn.textContent = game.mode==='replay' ? 'Resume Game' : 'Replay Game';
+  }
+
+
+  // ---------- random safe endgame ----------
+  function isPositionCompletelySafe(board){
+    // No king is in check, and no occupied square is attacked by the enemy.
+    for(const color of ['w','b']){
+      const enemy=color==='w'?'b':'w';
+      const king=findKing(board,color);
+      if(!king || isAttacked(board,king.r,king.c,enemy)) return false;
+
+      for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+        const p=board[r][c];
+        if(p && p.color===color && isAttacked(board,r,c,enemy)) return false;
+      }
+    }
+    return true;
+  }
+
+  function randomInt(min,max){
+    return Math.floor(Math.random()*(max-min+1))+min;
+  }
+
+  function randomFrom(list){
+    return list[Math.floor(Math.random()*list.length)];
+  }
+
+  function makeRandomEndgamePosition(){
+    const board=Array.from({length:8},()=>Array(8).fill(null));
+    const freeSquares=[];
+    for(let r=0;r<8;r++) for(let c=0;c<8;c++) freeSquares.push({r,c});
+
+    // Kings first, and never adjacent.
+    let wk,bk;
+    for(let tries=0;tries<500;tries++){
+      wk=randomFrom(freeSquares);
+      bk=randomFrom(freeSquares);
+      if(wk.r===bk.r && wk.c===bk.c) continue;
+      if(Math.max(Math.abs(wk.r-bk.r),Math.abs(wk.c-bk.c))<=1) continue;
+      break;
+    }
+    board[wk.r][wk.c]={type:'k',color:'w'};
+    board[bk.r][bk.c]={type:'k',color:'b'};
+
+    // 2–8 random non-king pieces keeps the position endgame-like.
+    const piecePool=['p','p','p','n','n','b','b','r','r','q'];
+    const count=randomInt(2,8);
+
+    for(let i=0;i<count;i++){
+      const choices=[];
+      for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+        if(board[r][c]) continue;
+        const type=randomFrom(piecePool);
+        if(type==='p' && (r===0 || r===7)) continue;
+        choices.push({r,c,type});
+      }
+      if(!choices.length) break;
+      const spot=randomFrom(choices);
+      board[spot.r][spot.c]={
+        type:spot.type,
+        color:Math.random()<0.5?'w':'b'
+      };
+    }
+    return board;
+  }
+
+  function generateRandomEndgame(){
+    // Try many random positions until one is fully quiet and playable.
+    for(let attempt=0;attempt<20000;attempt++){
+      const board=makeRandomEndgamePosition();
+
+      if(!isPositionCompletelySafe(board)) continue;
+
+      const testGame={
+        board,
+        turn:'w',
+        variant:game.variant,
+        castling:{wK:false,wQ:false,bK:false,bQ:false},
+        epTarget:null,
+        gameOver:false
+      };
+
+      if(!hasAnyLegalMoveColor(testGame,'w')) continue;
+      if(!hasAnyLegalMoveColor(testGame,'b')) continue;
+
+      game.board=board;
+      game.initialBoard=cloneBoard(board);
+      game.turn=Math.random()<0.5?'w':'b';
+      game.castling={wK:false,wQ:false,bK:false,bQ:false};
+      game.epTarget=null;
+      game.gameOver=false;
+      game.gameOverReason=null;
+      game.selected=null;
+      game.legalMoves=[];
+      game.lastMove=null;
+      game.history=[];
+      game.mode='play';
+      game.replayIndex=-1;
+      game.activeBadge=null;
+
+      if(game.badgeTimer){
+        clearTimeout(game.badgeTimer);
+        game.badgeTimer=null;
+      }
+
+      stopAutoplay();
+      clearAnnotations();
+      replayBar.classList.add('hidden');
+      overOverlay.classList.add('hidden');
+      rateOverlay.classList.add('hidden');
+      promoOverlay.classList.add('hidden');
+
+      renderAll();
+      return;
+    }
+
+    // A safe fallback if the random search somehow fails.
+    resetGame();
   }
 
   function resetGame(){
